@@ -271,7 +271,9 @@ func (s *Store) SetIfHigherSlot(k, v []byte, expire uint32) (err error) {
 	currentVal, _, err = s.chunks[idx].getWithoutLock(k, h)
 	if err == ErrCollision {
 		for i := 0; i < int(s.chunkColCnt); i++ {
+			s.chunks[i].Lock()
 			currentVal, _, err = s.chunks[i].getWithoutLock(k, h)
+			s.chunks[i].Unlock()
 			if err == ErrCollision || err == ErrNotFound {
 				continue
 			}
