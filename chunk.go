@@ -446,6 +446,12 @@ func (c *chunk) set(k, v []byte, h uint32, expire uint32) (err error) {
 	return
 }
 
+// set - write data to file. no lock held; lock before calling.
+func (c *chunk) setWithoutLock(k, v []byte, h uint32, expire uint32) (err error) {
+	err = c.write_key(k, v, h, expire)
+	return
+}
+
 // write_key - write data to file & in map
 func (c *chunk) write_key(k, v []byte, h uint32, expire uint32) (err error) {
 	c.needFsync = true
@@ -535,10 +541,16 @@ func (c *chunk) touch(k []byte, h uint32, expire uint32) (err error) {
 	return
 }
 
-// get return val by key guarded by mutex
+// get return val by key. no lock set; lock chunk before calling
 func (c *chunk) get(k []byte, h uint32) (v []byte, header *Header, err error) {
 	c.Lock()
 	defer c.Unlock()
+	v, header, err = c.load_key(k, h)
+	return
+}
+
+// get return val by key guarded by mutex
+func (c *chunk) getWithoutLock(k []byte, h uint32) (v []byte, header *Header, err error) {
 	v, header, err = c.load_key(k, h)
 	return
 }

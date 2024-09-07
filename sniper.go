@@ -258,6 +258,48 @@ func (s *Store) Set(k, v []byte, expire uint32) (err error) {
 	return
 }
 
+func (s *Store) SetIfHigherSlot(k, v []byte, expire uint32) (err error) {
+	h := hash(k)
+	idx := s.idx(h)
+
+	newSlot := readUint64(v)
+
+	s.chunks[idx].Lock()
+	defer s.chunks[idx].Unlock()
+
+	var currentVal []byte
+	currentVal, _, err = s.chunks[idx].getWithoutLock(k, h)
+	if err == ErrCollision {
+		for i := 0; i < int(s.chunkColCnt); i++ {
+			currentVal, _, err = s.chunks[i].getWithoutLock(k, h)
+			if err == ErrCollision || err == ErrNotFound {
+				continue
+			}
+			break
+		}
+	}
+
+	var existingSlot uint64
+	if len(currentVal) >= 8 {
+		existingSlot = readUint64(currentVal)
+	}
+
+	if err == ErrNotFound || newSlot > existingSlot {
+		err = s.chunks[idx].setWithoutLock(k, v, h, expire)
+		if err == ErrCollision {
+			for i := 0; i < int(s.chunkColCnt); i++ {
+				err = s.chunks[i].setWithoutLock(k, v, h, expire)
+				if err == ErrCollision {
+					continue
+				}
+				break
+			}
+		}
+	}
+
+	return
+}
+
 // Touch - update key expire
 func (s *Store) Touch(k []byte, expire uint32) (err error) {
 	h := hash(k)
@@ -457,6 +499,12 @@ func (s *Store) Expire() (err error) {
 func readUint32(b []byte) uint32 {
 	_ = b[3]
 	return uint32(b[3]) | uint32(b[2])<<8 | uint32(b[1])<<16 | uint32(b[0])<<24
+}
+
+func readUint64(b []byte) uint64 {
+	_ = b[7] // bounds check hint to compiler; see golang.org/issue/14808
+	return uint64(b[7]) | uint64(b[6])<<8 | uint64(b[5])<<16 | uint64(b[4])<<24 |
+		uint64(b[3])<<32 | uint64(b[2])<<40 | uint64(b[1])<<48 | uint64(b[0])<<56
 }
 
 func appendUint32(b []byte, x uint32) []byte {
