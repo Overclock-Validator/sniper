@@ -259,50 +259,45 @@ func (s *Store) Set(k, v []byte, expire uint32) (err error) {
 	return
 }
 
-func (s *Store) SetIfHigherSlot(k, v []byte, expire uint32) (err error) {
-	h := hash(k)
-	idx := s.idx(h)
-
-	newSlot := binary.LittleEndian.Uint64(v)
-
-	s.chunks[idx].Lock()
-	defer s.chunks[idx].Unlock()
-
+func (s *Store) SetIfSlotHigher(k, v []byte, expire uint32) (err error) {
 	var currentVal []byte
-	currentVal, _, err = s.chunks[idx].getWithoutLock(k, h)
-	if err == ErrCollision {
-		for i := 0; i < int(s.chunkColCnt); i++ {
-			s.chunks[i].Lock()
-			currentVal, _, err = s.chunks[i].getWithoutLock(k, h)
-			s.chunks[i].Unlock()
-			if err == ErrCollision || err == ErrNotFound {
-				continue
-			}
+
+	currentVal, err = s.Get(k)
+	if err == nil {
+		newSlot := binary.LittleEndian.Uint64(v)
+
+		var existingSlot uint64
+		if len(v) >= 8 {
+			existingSlot = binary.LittleEndian.Uint64(currentVal)
+		}
+
+		if existingSlot >= newSlot {
+			return nil
+		}
+	}
+
+	err = s.Set(k, v, expire)
+	if err != nil {
+		panic(fmt.Sprintf("err in Set: %v", err))
+	}
+
+	currentVal, err = s.Get(k)
+	if err == nil {
+		return nil
+	}
+
+	for {
+		err = s.Set(k, v, expire)
+		if err != nil {
+			panic(fmt.Sprintf("err in Set: %v", err))
+		}
+		currentVal, err = s.Get(k)
+		if err == nil {
 			break
 		}
 	}
 
-	var existingSlot uint64
-	if len(currentVal) >= 8 {
-		existingSlot = binary.LittleEndian.Uint64(currentVal)
-	}
-
-	if err == ErrNotFound || newSlot > existingSlot {
-		err = s.chunks[idx].setWithoutLock(k, v, h, expire)
-		if err == ErrCollision {
-			for i := 0; i < int(s.chunkColCnt); i++ {
-				s.chunks[i].Lock()
-				err = s.chunks[i].setWithoutLock(k, v, h, expire)
-				s.chunks[i].Unlock()
-				if err == ErrCollision {
-					continue
-				}
-				break
-			}
-		}
-	}
-
-	return
+	return nil
 }
 
 // Touch - update key expire
