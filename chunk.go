@@ -368,6 +368,31 @@ func (c *chunk) fsync() error {
 	return nil
 }
 
+func (c *chunk) keysBetweenPrefixes(start uint64, end uint64) [][]byte {
+	c.Lock()
+	defer c.Unlock()
+	var err error
+
+	keys := make([][]byte, 0)
+	for _, meta := range c.m {
+		addr, size, _ := decodeKeyMeta(meta)
+		packet := make([]byte, 1<<size)
+		_, err = c.f.ReadAt(packet, int64(addr))
+		if err != nil {
+			continue
+		}
+
+		_, key, _ := packetUnmarshal(packet)
+		prefix := binary.BigEndian.Uint64(key)
+
+		if prefix >= start && prefix <= end {
+			keys = append(keys, key)
+		}
+	}
+
+	return keys
+}
+
 // expirekeys walk all keys and delete expired
 // maxruntime - maximum run time
 func (c *chunk) expirekeys(maxruntime time.Duration) error {

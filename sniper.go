@@ -334,6 +334,15 @@ func (s *Store) Get(k []byte) (v []byte, err error) {
 	return
 }
 
+func (s *Store) KeysBetweenPrefixes(startPrefix uint64, endPrefix uint64) [][]byte {
+	keys := make([][]byte, 0)
+	for i := range s.chunks[:] {
+		keysFound := s.chunks[i].keysBetweenPrefixes(startPrefix, endPrefix)
+		keys = append(keys, keysFound...)
+	}
+	return keys
+}
+
 // Count return count keys
 func (s *Store) Count() (cnt int) {
 	for i := range s.chunks[:] {
