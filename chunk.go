@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/panjf2000/ants/v2"
 )
 
 const (
@@ -374,21 +376,38 @@ func (c *chunk) keysBetweenPrefixes(start uint64, end uint64) [][]byte {
 	var err error
 
 	keys := make([][]byte, 0)
-	for _, meta := range c.m {
+
+	var wg sync.WaitGroup
+	mu := sync.Mutex{}
+
+	pool, _ := ants.NewPoolWithFunc(100, func(i interface{}) {
+		defer wg.Done()
+
+		meta := i.(uint64)
+
 		addr, size, _ := decodeKeyMeta(meta)
 		packet := make([]byte, 1<<size)
 		_, err = c.f.ReadAt(packet, int64(addr))
 		if err != nil {
-			continue
+			return
 		}
 
 		_, key, _ := packetUnmarshal(packet)
 		prefix := binary.BigEndian.Uint64(key)
 
 		if prefix >= start && prefix <= end {
+			mu.Lock()
 			keys = append(keys, key)
+			mu.Unlock()
 		}
+	})
+
+	for _, meta := range c.m {
+		wg.Add(1)
+		pool.Invoke(meta)
 	}
+
+	wg.Wait()
 
 	return keys
 }

@@ -336,10 +336,25 @@ func (s *Store) Get(k []byte) (v []byte, err error) {
 
 func (s *Store) KeysBetweenPrefixes(startPrefix uint64, endPrefix uint64) [][]byte {
 	keys := make([][]byte, 0)
+
+	var wg sync.WaitGroup
+	mu := sync.Mutex{}
+
 	for i := range s.chunks[:] {
-		keysFound := s.chunks[i].keysBetweenPrefixes(startPrefix, endPrefix)
-		keys = append(keys, keysFound...)
+		wg.Add(1)
+
+		go func(idx int) {
+			defer wg.Done()
+			keysFound := s.chunks[idx].keysBetweenPrefixes(startPrefix, endPrefix)
+
+			mu.Lock()
+			keys = append(keys, keysFound...)
+			mu.Unlock()
+		}(i)
 	}
+
+	wg.Wait()
+
 	return keys
 }
 
