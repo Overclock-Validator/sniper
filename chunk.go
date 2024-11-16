@@ -373,12 +373,11 @@ func (c *chunk) fsync() error {
 func (c *chunk) keysBetweenPrefixes(start uint64, end uint64) [][]byte {
 	c.Lock()
 	defer c.Unlock()
+
 	var err error
-
-	keys := make([][]byte, 0)
-
 	var wg sync.WaitGroup
 	mu := sync.Mutex{}
+	keys := make([][]byte, 0)
 
 	pool, _ := ants.NewPoolWithFunc(50, func(i interface{}) {
 		defer wg.Done()
