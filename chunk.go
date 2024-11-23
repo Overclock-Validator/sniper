@@ -379,7 +379,7 @@ func (c *chunk) keysBetweenPrefixes(start uint64, end uint64) [][]byte {
 	mu := sync.Mutex{}
 	keys := make([][]byte, 0)
 
-	pool, _ := ants.NewPoolWithFunc(50, func(i interface{}) {
+	pool, _ := ants.NewPoolWithFunc(20, func(i interface{}) {
 		defer wg.Done()
 
 		meta := i.(uint64)
