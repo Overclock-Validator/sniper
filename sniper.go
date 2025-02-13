@@ -358,6 +358,48 @@ func (s *Store) KeysBetweenPrefixes(startPrefix uint64, endPrefix uint64) [][]by
 	return keys
 }
 
+func (s *Store) AllKeys() [][]byte {
+	keys := make([][]byte, 0)
+
+	var wg sync.WaitGroup
+	mu := sync.Mutex{}
+
+	for i := range s.chunks[:] {
+		wg.Add(1)
+
+		go func(idx int) {
+			defer wg.Done()
+			keysFound := s.chunks[idx].allKeys()
+
+			mu.Lock()
+			keys = append(keys, keysFound...)
+			mu.Unlock()
+		}(i)
+	}
+
+	wg.Wait()
+
+	return keys
+}
+
+type ChunkIter struct {
+	chunks          []chunk
+	currentChunkIdx int
+}
+
+func (s *Store) ChunkIter() *ChunkIter {
+	return &ChunkIter{chunks: s.chunks}
+}
+
+func (iter *ChunkIter) NextPubkeys() ([][]byte, bool) {
+	keys := iter.chunks[iter.currentChunkIdx].allKeys()
+
+	iter.currentChunkIdx++
+	hasNext := iter.currentChunkIdx < len(iter.chunks)
+
+	return keys, hasNext
+}
+
 // Count return count keys
 func (s *Store) Count() (cnt int) {
 	for i := range s.chunks[:] {

@@ -411,6 +411,44 @@ func (c *chunk) keysBetweenPrefixes(start uint64, end uint64) [][]byte {
 	return keys
 }
 
+func (c *chunk) allKeys() [][]byte {
+	c.Lock()
+	defer c.Unlock()
+
+	var err error
+	var wg sync.WaitGroup
+	mu := sync.Mutex{}
+	keys := make([][]byte, 0)
+
+	pool, _ := ants.NewPoolWithFunc(20, func(i interface{}) {
+		defer wg.Done()
+
+		meta := i.(uint64)
+
+		addr, size, _ := decodeKeyMeta(meta)
+		packet := make([]byte, 1<<size)
+		_, err = c.f.ReadAt(packet, int64(addr))
+		if err != nil {
+			return
+		}
+
+		_, key, _ := packetUnmarshal(packet)
+
+		mu.Lock()
+		keys = append(keys, key)
+		mu.Unlock()
+	})
+
+	for _, meta := range c.m {
+		wg.Add(1)
+		pool.Invoke(meta)
+	}
+
+	wg.Wait()
+
+	return keys
+}
+
 // expirekeys walk all keys and delete expired
 // maxruntime - maximum run time
 func (c *chunk) expirekeys(maxruntime time.Duration) error {
